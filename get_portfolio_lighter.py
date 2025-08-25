@@ -38,9 +38,9 @@ async def get_lighter_balance():
 
     balance = {
         "exchange": "lighter",
-        "balance": balance,
+        # "balance": balance,
         "equity": equity,
-        "unrealized_pnl": unrealized_pnl
+        # "unrealized_pnl": unrealized_pnl
     }
 
     return balance

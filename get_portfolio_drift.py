@@ -4,7 +4,6 @@ import asyncio
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 from solders.pubkey import Pubkey
-# from driftpy.keypair import load_keypair
 from driftpy.drift_client import DriftClient
 from typing import Dict
 
@@ -59,22 +58,15 @@ async def get_drift_balance():
     drift_user = drift_client.get_user()
 
     total_collateral = drift_user.get_total_collateral()
-    print(f"Total Collateral: {total_collateral / 10 ** 6}")
-
-    free_collateral = drift_user.get_free_collateral()
-    print(f"Free Collateral: {free_collateral / 10 ** 6}")
-
+    # free_collateral = drift_user.get_free_collateral()
     unrealized_pnl = drift_user.get_unrealized_pnl(with_funding=True)
-    print(f"Unrealized PnL: {unrealized_pnl / 10 ** 6}")
-
-    pnl = drift_user.get_unrealized_funding_pnl()
-    print(f"Unrealized Funding PnL: {pnl / 10 ** 6}")
+    # pnl = drift_user.get_unrealized_funding_pnl()
 
     balance = {
         "exchange": "drift",
-        "balance": total_collateral / 10**6,
+        # "balance": total_collateral / 10**6,
         "equity": total_collateral / 10**6 + unrealized_pnl / 10**6,
-        "unrealized_pnl": unrealized_pnl / 10**6
+        # "unrealized_pnl": unrealized_pnl / 10**6
     }
 
     return balance
@@ -96,7 +88,7 @@ async def get_drift_positions():
     drift_user = drift_client.get_user()
 
     account = drift_user.get_user_account()
-    print(account)
+    # print(account)
 
     position_dicts = []
     for pos in account.perp_positions:
@@ -106,12 +98,9 @@ async def get_drift_positions():
             print(perp_positions)
             pos_dict = {
                 "exchange": "drift",
-                # "market_id": pos.market_id,
                 "symbol": market_mappings[pos.market_index],
                 "side": "long" if pos.base_asset_amount > 0 else "short",
                 "base_amount": float(pos.base_asset_amount / 10 ** 9),
-                # "avg_entry_price": float(pos.avg_entry_price),
-                # "liquidation_price": float(pos.additional_properties['liquidation_price']),
             }
 
             position_dicts.append(pos_dict)

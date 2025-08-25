@@ -25,9 +25,9 @@ def get_extended_balance():
 
     balance = {
         "exchange": "extended",
-        "balance": float(data.get("balance", 0.0)),
+        # "balance": float(data.get("balance", 0.0)),
         "equity": float(data.get("equity", 0.0)),
-        "unrealized_pnl": float(data.get("unrealisedPnl", 0.0)),
+        # "unrealized_pnl": float(data.get("unrealisedPnl", 0.0)),
     }
 
     return balance
@@ -52,15 +52,9 @@ def get_extended_positions():
 
         mapped = {
             "exchange": "extended",
-            # "market_id": pos["id"],  # Position ID
             "symbol": symbol,
-            "side": pos["side"].lower(),  # "LONG"/"SHORT" -> "long"/"short"
+            "side": pos["side"].lower(),
             "base_amount": float(pos["size"]),
-            # "avg_entry_price": float(pos["openPrice"]),
-            # "liquidation_price": float(pos["liquidationPrice"]),
-            # "mark_price": float(pos["markPrice"]),
-            # "collected_funding": 0.0,  # will be filled later
-            # "creation_timestamp": pos["createdAt"]
         }
         positions_dict.append(mapped)
 
