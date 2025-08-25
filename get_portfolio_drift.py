@@ -2,7 +2,9 @@ import os
 import requests
 import asyncio
 from solana.rpc.async_api import AsyncClient
-from driftpy.keypair import load_keypair
+from solders.keypair import Keypair
+from solders.pubkey import Pubkey
+# from driftpy.keypair import load_keypair
 from driftpy.drift_client import DriftClient
 from typing import Dict
 
@@ -11,8 +13,10 @@ CONTRACTS_URL = "https://data.api.drift.trade/contracts"
 SOLANA_RPC_API_KEY = os.getenv("SOLANA_RPC_API_KEY")
 RPC_URL = f'https://mainnet.helius-rpc.com/?api-key={SOLANA_RPC_API_KEY}'
 
-PRIVATE_KEY = os.getenv("SOLANA_COMP_PRIVATE_KEY")
-KEYPAIR = load_keypair(PRIVATE_KEY)
+KEYPAIR = Keypair()
+
+PUBLIC_KEY = os.getenv("SOLANA_COMP_PUBLIC_KEY")
+PUBLIC_KEY = Pubkey.from_string(PUBLIC_KEY)
 
 
 def fetch_market_index_to_symbol_map():
@@ -47,7 +51,8 @@ async def get_drift_balance():
         wallet=KEYPAIR,
         env="mainnet",
         perp_market_indexes=[0, 75],
-        spot_market_indexes=[0]
+        spot_market_indexes=[0],
+        authority=PUBLIC_KEY
     )
     await drift_client.subscribe()
 
@@ -83,7 +88,8 @@ async def get_drift_positions():
         wallet=KEYPAIR,
         env="mainnet",
         perp_market_indexes=[0, 75],
-        spot_market_indexes=[0]
+        spot_market_indexes=[0],
+        authority=PUBLIC_KEY
     )
     await drift_client.subscribe()
 
@@ -114,4 +120,4 @@ async def get_drift_positions():
 
 
 if __name__ == '__main__':
-    asyncio.run(get_drift_positions())
+    asyncio.run(get_drift_balance())
