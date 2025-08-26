@@ -9,6 +9,7 @@ anchorpy-core==0.2.0
 annotated-types==0.7.0
 anyio==4.4.0
 apischema==0.17.5
+asn1crypto==1.5.1
 async-timeout==4.0.3
 attrs==22.2.0
 backoff==2.2.1
@@ -43,6 +44,7 @@ flake8==6.0.0
 frozenlist==1.7.0
 gitdb==4.0.12
 GitPython==3.1.45
+greenlet==3.2.4
 grpcio==1.68.1
 h11==0.14.0
 hexbytes==1.3.1
@@ -68,9 +70,12 @@ OSlash==0.6.3
 packaging==23.1
 pandas==2.3.2
 parsimonious==0.10.0
+pg8000==1.31.4
 pillow==11.3.0
+plotly==6.3.0
 protobuf==5.29.2
 psutil==5.9.4
+psycopg2==2.9.10
 py==1.11.0
 pyarrow==21.0.0
 pycares==4.3.0
@@ -93,11 +98,13 @@ requests==2.32.5
 rfc3986==1.5.0
 rlp==4.1.0
 rpds-py==0.27.0
+scramp==1.4.6
 six==1.17.0
 smmap==5.0.2
 sniffio==1.3.0
 solana==0.36.6
 solders==0.26.0
+SQLAlchemy==2.0.43
 streamlit==1.48.1
 sumtypes==0.1a6
 tenacity==9.1.2
