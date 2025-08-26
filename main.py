@@ -158,6 +158,36 @@ def plot_funding(agg_df: pd.DataFrame, freq: str):
     )
 
 
+def plot_cumulative_funding(df: pd.DataFrame):
+    df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
+
+    # Cumulative funding by symbol
+    df_sorted = df.sort_values("datetime")
+    cum_df = (
+        df_sorted.groupby("symbol")[["datetime", "funding"]]
+            .apply(lambda g: g.assign(cumulative=g["funding"].cumsum()))
+            .reset_index(drop=True)
+    )
+
+    # Add total
+    total_df = (
+        df_sorted[["datetime", "funding"]]
+            .assign(cumulative=df_sorted["funding"].cumsum())
+    )
+    total_df["symbol"] = "TOTAL"
+
+    cum_df = pd.concat([cum_df, total_df], ignore_index=True)
+
+    return px.line(
+        cum_df,
+        x="datetime",
+        y="cumulative",
+        color="symbol",
+        title="Cumulative Funding",
+        markers=False
+    )
+
+
 def get_balances():
     extended_balance = get_extended_balance()
     lighter_balance = asyncio.run(get_lighter_balance())
@@ -308,11 +338,19 @@ def main():
 
     col1, col2, col3 = st.columns(3)
 
-    for col, freq in zip([col1, col2, col3], ["1D", "8H", "1H"]):
-        agg_df = aggregate_funding_by_4hr(df_funding, freq)
-        fig = plot_funding(agg_df, freq)
-        with col:
-            st.plotly_chart(fig, use_container_width=True)
+    # Cumulative funding
+    with col1:
+        st.plotly_chart(plot_cumulative_funding(df_funding), use_container_width=True)
+
+    # 1D funding
+    agg_1d = aggregate_funding_by_4hr(df_funding, "1D")
+    with col2:
+        st.plotly_chart(plot_funding(agg_1d, "1D"), use_container_width=True)
+
+    # 8H funding
+    agg_8h = aggregate_funding_by_4hr(df_funding, "8H")
+    with col3:
+        st.plotly_chart(plot_funding(agg_8h, "8H"), use_container_width=True)
 
     st.header("Order History")
     st.table(df_orders)
