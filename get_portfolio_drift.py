@@ -7,7 +7,7 @@ from solders.pubkey import Pubkey
 from driftpy.drift_client import DriftClient
 from typing import Dict
 
-CONTRACTS_URL = "https://data.api.drift.trade/contracts"
+BASE_URL = "https://data.api.drift.trade/"
 
 SOLANA_RPC_API_KEY = os.getenv("SOLANA_RPC_API_KEY")
 RPC_URL = f'https://mainnet.helius-rpc.com/?api-key={SOLANA_RPC_API_KEY}'
@@ -16,10 +16,11 @@ KEYPAIR = Keypair()
 
 PUBLIC_KEY = os.getenv("SOLANA_COMP_PUBLIC_KEY")
 PUBLIC_KEY = Pubkey.from_string(PUBLIC_KEY)
-
+DRIFT_ACCOUNT_ID = os.getenv("SOLANA_COMP_DRIFT_ACCOUNT_ID")
 
 def fetch_market_index_to_symbol_map():
-    resp = requests.get(CONTRACTS_URL)
+    contracts_url = f"{BASE_URL}/contracts"
+    resp = requests.get(contracts_url)
     resp.raise_for_status()
     contracts = resp.json()
 
@@ -108,5 +109,81 @@ async def get_drift_positions():
         return position_dicts
 
 
+def get_drift_collected_funding():
+    market_mappings = fetch_market_index_to_symbol_map()
+    funding_url = f"{BASE_URL}/user/{DRIFT_ACCOUNT_ID}/fundingPayments"
+
+    funding_records = []
+    next_page = None
+
+    while True:
+        # add nextPage param if present
+        url = funding_url if not next_page else f"{funding_url}?page={next_page}"
+        resp = requests.get(url)
+        resp.raise_for_status()
+        results = resp.json()
+
+        for f in results.get("records", []):
+            funding_record = {
+                "exchange": "drift",
+                "symbol": market_mappings.get(f.get("marketIndex")),
+                "timestamp": f.get("ts") * 1000,
+                "funding": float(f.get("fundingPayment", 0.0)),
+                "user_address": f.get("user").lower(),
+            }
+            funding_records.append(funding_record)
+
+        # check if there’s another page
+        next_page = results.get("meta", {}).get("nextPage")
+        if not next_page:
+            break
+
+    return funding_records
+
+
+def get_drift_order_history():
+    trades_url = f"{BASE_URL}/user/{DRIFT_ACCOUNT_ID}/trades"
+    resp = requests.get(trades_url)
+    resp.raise_for_status()
+    results = resp.json()
+    trades = []
+
+    for t in results['records']:
+        print(t)
+
+        if t.get("user").lower() == t.get("taker").lower():  # Taker
+            type = 'market'
+            if t.get("takerOrderDirection", '').lower() == 'long':
+                side = 'buy'
+            else:
+                side = 'sell'
+            fee = float(t.get("takerFee", 0.0))
+        else:  # Maker
+            type = 'limit'
+            if t.get("takerOrderDirection", '').lower() == 'long':
+                side = 'sell'
+            else:
+                side = 'buy'
+            fee = float(t.get("makerFee", 0.0))
+
+        trade = {
+            "exchange": "drift",
+            "symbol": t.get("symbol", "").split("-")[0] if "-" in t.get("symbol", "") else t.get("symbol§", ""),
+            "trade_id": t.get("txSig") + "_" + str(t.get("txSigIndex")),
+            "side": side,
+            "type": type,
+            "price":  float(t.get("quoteAssetAmountFilled", 0.0)) / float(t.get("baseAssetAmountFilled", 1.0)),
+            "filled_quantity": float(t.get("baseAssetAmountFilled", 0.0)),
+            "fee": fee,
+            "timestamp": t.get("ts") * 1000,
+            "user_address": t.get("user").lower(),
+        }
+        trades.append(trade)
+
+    return trades
+
+
 if __name__ == '__main__':
-    asyncio.run(get_drift_balance())
+    trades = get_drift_order_history()
+    print(trades)
+    # asyncio.run(get_drift_order_history())
