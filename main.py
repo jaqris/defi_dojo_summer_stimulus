@@ -265,7 +265,7 @@ def main():
     st.title("Jaqris' Portfolio Overview")
 
     # Get data
-    # df_balances, total_equity = get_balances()
+    df_balances, total_equity = get_balances()
     df_positions = get_positions()
     df_funding = get_collected_funding()
     df_orders = get_orders()
@@ -276,24 +276,27 @@ def main():
     df_funding_summary, total_funding, recent_funding = aggregate_funding(df_funding)
     df_order_summary, total_pnl_without_fees, total_fees, _ = aggregate_pnl(df_orders)
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Collected funding", f"${total_funding:.2f}")
-    col2.metric("Fees paid", f"${total_fees:.2f}")
-    col3.metric("Effective balance", f"${10000 + total_funding - total_fees:.2f}")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Total equity", f"${total_equity:.2f}")
+    col2.metric("Collected funding", f"${total_funding:.2f}")
+    col3.metric("PnL (excl. fees)", f"${total_pnl_without_fees:.2f}")
+    col4.metric("Fees paid", f"${total_fees:.2f}")
+
     # col4.metric("PnL (disregarded from balance)", f"${total_pnl_without_fees:.2f}")
 
     # Display data
     col1, col2 = st.columns(2)
     with col1:
-        # st.header("Current Balances")
-        # st.table(df_balances)
-        st.header("Current Positions")
-        st.table(df_positions)
-    with col2:
+        st.header("Current Balances")
+        st.table(df_balances)
         # st.header("Current Positions")
         # st.table(df_positions)
-        st.header("PNL Summary")
-        st.table(df_order_summary)
+    with col2:
+        st.header("Current Positions")
+        st.table(df_positions)
+
+    st.header("PNL Summary")
+    st.table(df_order_summary)
 
     col1, col2 = st.columns(2)
     with col1:
