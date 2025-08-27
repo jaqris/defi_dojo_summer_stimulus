@@ -1,6 +1,8 @@
 import os
 import requests
-import time
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 # API details
 API_KEY = os.getenv("EXTENDED_API_KEY")
@@ -45,8 +47,6 @@ def get_extended_order_history():
             trades.append(trade)
 
     return trades
-
-
 
 
 def get_extended_balance():
@@ -126,15 +126,6 @@ def get_extended_collected_funding():
     return funding_records
 
 
-def get_extended_positions_dict():
-
-    balances = get_extended_balance()
-    positions = get_extended_positions()
-    get_extended_collected_funding(positions)
-
-    return positions
-
-
 if __name__ == "__main__":
-    positions = get_extended_positions_dict()
-    print(positions)
+    funding = get_extended_collected_funding()
+    print(funding)

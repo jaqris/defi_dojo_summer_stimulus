@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, text
 from get_portfolio_extended import get_extended_balance, get_extended_positions, get_extended_order_history, get_extended_collected_funding
 from get_portfolio_lighter import get_lighter_balance, get_lighter_positions, get_lighter_order_history, get_lighter_collected_funding
 from get_portfolio_drift import get_drift_balance, get_drift_positions, get_drift_order_history, get_drift_collected_funding
-
+from get_portfolio_hyperliquid import get_hyperliquid_balance, get_hyperliquid_positions, get_hyperliquid_order_history, get_hyperliquid_collected_funding
 
 FROM_DATABASE = True
 
@@ -192,9 +192,10 @@ def get_balances():
     extended_balance = get_extended_balance()
     lighter_balance = asyncio.run(get_lighter_balance())
     drift_balance = asyncio.run(get_drift_balance())
+    hyperliquid_balance = get_hyperliquid_balance()
 
     # Create DataFrame from list of dicts
-    df = pd.DataFrame([extended_balance, lighter_balance, drift_balance])
+    df = pd.DataFrame([extended_balance, lighter_balance, drift_balance, hyperliquid_balance])
 
     total_equity = df['equity'].sum()
     # Add total row
@@ -244,8 +245,9 @@ def get_positions():
         extended_positions = get_extended_positions()
         lighter_positions = asyncio.run(get_lighter_positions())
         drift_positions = asyncio.run(get_drift_positions())
+        hyperliquid_positions = get_hyperliquid_positions()
 
-        df = pd.DataFrame(extended_positions + lighter_positions + drift_positions)
+        df = pd.DataFrame(extended_positions + lighter_positions + drift_positions + hyperliquid_positions)
 
         return df.sort_values(by=['symbol', 'side'])
 
@@ -264,11 +266,12 @@ def get_orders():
         extended_orders = get_extended_order_history()
         lighter_orders = asyncio.run(get_lighter_order_history())
         drift_orders = get_drift_order_history()
+        hyperliquid_orders = get_hyperliquid_order_history()
 
-        df = pd.DataFrame(extended_orders + lighter_orders + drift_orders)
+        df = pd.DataFrame(extended_orders + lighter_orders + drift_orders + hyperliquid_orders)
         df = df.sort_values(by=['timestamp']).reset_index(drop=True)
 
-        return df[['exchange', 'symbol', 'side', 'type', 'price', 'filled_quantity', 'fee', 'timestamp']]
+        return df[['exchange', 'symbol', 'side', 'price', 'filled_quantity', 'fee', 'timestamp']]
 
 
 def get_collected_funding():
@@ -285,6 +288,7 @@ def get_collected_funding():
         extended_funding = get_extended_collected_funding()
         lighter_funding = asyncio.run(get_lighter_collected_funding())
         drift_funding = get_drift_collected_funding()
+        hyperliquid_funding = get_hyperliquid_collected_funding()
 
         df = pd.DataFrame(extended_funding + lighter_funding + drift_funding)
         # df = pd.DataFrame(lighter_funding)

@@ -1,11 +1,15 @@
 import os
 import requests
+import logging
 import asyncio
 from solana.rpc.async_api import AsyncClient
 from solders.keypair import Keypair
 from solders.pubkey import Pubkey
 from driftpy.drift_client import DriftClient
 from typing import Dict
+
+logging.basicConfig(level=logging.INFO)
+
 
 BASE_URL = "https://data.api.drift.trade/"
 
@@ -17,6 +21,7 @@ KEYPAIR = Keypair()
 PUBLIC_KEY = os.getenv("SOLANA_COMP_PUBLIC_KEY")
 PUBLIC_KEY = Pubkey.from_string(PUBLIC_KEY)
 DRIFT_ACCOUNT_ID = os.getenv("SOLANA_COMP_DRIFT_ACCOUNT_ID")
+
 
 def fetch_market_index_to_symbol_map():
     contracts_url = f"{BASE_URL}/contracts"
@@ -95,8 +100,6 @@ async def get_drift_positions():
     for pos in account.perp_positions:
 
         if pos.base_asset_amount != 0:
-            perp_positions = drift_user.get_perp_position(pos.market_index)
-            print(perp_positions)
             pos_dict = {
                 "exchange": "drift",
                 "symbol": market_mappings[pos.market_index],
@@ -149,7 +152,6 @@ def get_drift_order_history():
     trades = []
 
     for t in results['records']:
-        print(t)
 
         if t.get("user").lower() == t.get("taker").lower():  # Taker
             type = 'market'
@@ -186,4 +188,3 @@ def get_drift_order_history():
 if __name__ == '__main__':
     trades = get_drift_order_history()
     print(trades)
-    # asyncio.run(get_drift_order_history())
