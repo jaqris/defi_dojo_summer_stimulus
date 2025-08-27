@@ -22,7 +22,7 @@ def get_hyperliquid_order_history(include_subaccounts=False):
         trade = {
             "exchange": "hyperliquid",
             "symbol": f['coin'],
-            "trade_id": f['hash'],
+            "trade_id": f['tid'],
             "side": side,
             "type": 'unknown',
             "price": float(f['px']),

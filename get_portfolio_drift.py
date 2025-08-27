@@ -55,7 +55,7 @@ async def get_drift_balance():
         connection,
         wallet=KEYPAIR,
         env="mainnet",
-        perp_market_indexes=[0, 75],
+        perp_market_indexes=[0, 75, 66],
         spot_market_indexes=[0],
         authority=PUBLIC_KEY
     )
@@ -85,7 +85,7 @@ async def get_drift_positions():
         connection,
         wallet=KEYPAIR,
         env="mainnet",
-        perp_market_indexes=[0, 75],
+        perp_market_indexes=[0, 75, 66],
         spot_market_indexes=[0],
         authority=PUBLIC_KEY
     )
@@ -186,5 +186,5 @@ def get_drift_order_history():
 
 
 if __name__ == '__main__':
-    trades = get_drift_order_history()
+    trades = asyncio.run(get_drift_balance())
     print(trades)
