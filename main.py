@@ -257,7 +257,7 @@ def get_orders():
     if FROM_DATABASE:
         with engine.connect() as conn:
             query = text("""
-                SELECT exchange, symbol, side, type, price, filled_quantity, fee, timestamp
+                SELECT exchange, symbol, side, price, filled_quantity, fee, timestamp
                 FROM order_history
                 ORDER BY timestamp
             """)
