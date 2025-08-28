@@ -233,7 +233,7 @@ def get_positions():
                     exchange,
                     symbol,
                     CASE WHEN base_amount < 0 THEN 'short' ELSE 'long' END AS side,
-                    ROUND(ABS(base_amount) * 100) / 100 AS base_amount,
+                    ROUND(ABS(base_amount) * 100) / 100 AS base_amount
                 FROM subquery
                 WHERE ABS(base_amount) * price > 0.01
                 ORDER BY symbol, side;
