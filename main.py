@@ -216,25 +216,26 @@ def get_positions():
     if FROM_DATABASE:
         query = text("""
                 WITH subquery AS (
-                    SELECT 
-                        exchange, 
-                        symbol, 
+                    SELECT
+                        exchange,
+                        symbol,
                         SUM(
-                            CASE 
-                                WHEN side = 'sell' THEN -1 * filled_quantity 
-                                ELSE filled_quantity 
+                            CASE
+                                WHEN side = 'sell' THEN -1 * filled_quantity
+                                ELSE filled_quantity
                             END
-                        ) AS base_amount
+                        ) AS base_amount,
+                        AVG(price) AS price
                     FROM order_history
                     GROUP BY exchange, symbol
                 )
-                SELECT 
+                SELECT
                     exchange,
                     symbol,
                     CASE WHEN base_amount < 0 THEN 'short' ELSE 'long' END AS side,
-                    ABS(base_amount) AS base_amount
+                    ROUND(ABS(base_amount) * 100) / 100 AS base_amount,
                 FROM subquery
-                WHERE base_amount != 0
+                WHERE ABS(base_amount) * price > 0.01
                 ORDER BY symbol, side;
             """)
         with engine.connect() as conn:

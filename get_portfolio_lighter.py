@@ -10,7 +10,7 @@ from typing import Dict
 
 logging.basicConfig(level=logging.INFO)
 
-
+# TODO: https://github.com/elliottech/lighter-python/blob/main/examples/create_sl_tp.py
 # Defining the host is optional and defaults to https://mainnet.zklighter.elliot.ai
 # See configuration.py for a list of all supported configuration parameters.
 BASE_URL = "https://mainnet.zklighter.elliot.ai"
@@ -44,7 +44,6 @@ def fetch_market_index_to_symbol_map():
         mapping[market_id] = symbol
 
     return mapping
-
 
 
 async def get_lighter_balance():
