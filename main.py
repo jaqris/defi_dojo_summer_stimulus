@@ -94,26 +94,27 @@ def aggregate_pnl(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def aggregate_funding(df: pd.DataFrame) -> pd.DataFrame:
-    # aggregate per exchange + symbol
-    agg = (
-        df.groupby(["exchange", "symbol"], as_index=False)["funding"]
-        .sum()
-        .rename(columns={"funding": "total_funding"})
+    # pivot: symbols down rows, exchanges across columns, sum of funding in cells
+    agg = pd.pivot_table(
+        df,
+        values="funding",
+        index="symbol",
+        columns="exchange",
+        aggfunc="sum",
+        fill_value=0,
+        margins=True,          # adds total row and total column
+        margins_name="Total"   # name for totals
+    ).reset_index()
+
+    # overall total funding
+    total_funding = df["funding"].sum()
+
+    # 12 most recent funding records (convert ms -> datetime)
+    most_recent = (
+        df.sort_values(by="timestamp", ascending=False)
+          .head(12)
+          .copy()
     )
-
-    total_funding = agg["total_funding"].sum()
-    # totals row
-    totals = {
-        "exchange": "Total",
-        "symbol": "",
-        "total_funding": agg["total_funding"].sum()
-    }
-    agg = pd.concat([agg, pd.DataFrame([totals])], ignore_index=True)
-
-    # 12 most recent funding records:
-    most_recent = df.sort_values(by="timestamp", ascending=False).head(12)
-
-    # convert timestamp to date time
     most_recent["timestamp"] = pd.to_datetime(most_recent["timestamp"], unit="ms")
 
     return agg, total_funding, most_recent
