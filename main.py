@@ -90,7 +90,21 @@ def aggregate_pnl(df: pd.DataFrame) -> pd.DataFrame:
     }
     result = pd.concat([result, pd.DataFrame([totals])], ignore_index=True)
 
-    return result, total_pnl_without_fees, total_fees, total_pnl_with_fees
+    # ---- HOURLY SUMMARY ----
+    df["hour"] = pd.to_datetime(df["timestamp"], unit="ms").dt.floor("h")
+
+    hourly_summary = (
+        df.groupby("hour", as_index=False)
+            .apply(lambda g: pd.Series({
+            "PnL_no_fee": (g[g["side"].str.lower() == "sell"]["value"].sum()
+                           - g[g["side"].str.lower() == "buy"]["value"].sum()),
+            "total_fees": g["fee"].sum()
+        }))
+            .reset_index(drop=True)
+    )
+    hourly_summary["PnL_with_fee"] = hourly_summary["PnL_no_fee"] - hourly_summary["total_fees"]
+
+    return result, total_pnl_without_fees, total_fees, total_pnl_with_fees, hourly_summary
 
 
 def aggregate_funding(df: pd.DataFrame) -> pd.DataFrame:
@@ -117,7 +131,15 @@ def aggregate_funding(df: pd.DataFrame) -> pd.DataFrame:
     )
     most_recent["timestamp"] = pd.to_datetime(most_recent["timestamp"], unit="ms")
 
-    return agg, total_funding, most_recent
+    # hourly aggregation of total funding
+    df["hour"] = pd.to_datetime(df["timestamp"], unit="ms").dt.floor("h")
+    hourly_funding = (
+        df.groupby("hour", as_index=False)["funding"]
+          .sum()
+          .rename(columns={"funding": "total_funding"})
+    )
+
+    return agg, total_funding, most_recent, hourly_funding
 
 
 def aggregate_funding_by_4hr(df: pd.DataFrame, freq: str = "4H") -> pd.DataFrame:
@@ -296,6 +318,59 @@ def get_collected_funding():
         # df = pd.DataFrame(lighter_funding)
         return df.sort_values(by=['timestamp']).reset_index(drop=True)
 
+
+def calculate_apy(
+        df_hourly_funding: pd.DataFrame,
+        df_hourly_pnl: pd.DataFrame,
+        hours: int = 24,
+        capital: float = 10_000):
+    """
+    Calculate APY over the last 24 hours based on cumulative funding + pnl.
+
+    Args:
+        df_hourly_funding: DataFrame with columns ["hour", "total_funding"]
+        df_hourly_pnl: DataFrame with columns ["hour", "PnL_with_fee"]
+        capital: starting balance (default 10,000)
+
+    Returns:
+        apy (float): annualized percentage yield
+        balance_curve (pd.Series): balance over time
+    """
+    # merge funding + pnl by hour
+    df = pd.merge(df_hourly_funding, df_hourly_pnl, on="hour", how="outer").fillna(0)
+
+    # sort by hour
+    df = df.sort_values("hour")
+
+    # net cash flow each hour
+    df["net"] = df["total_funding"] + df["PnL_with_fee"]
+
+    # cumulative balance
+    df["balance"] = capital + df["net"].cumsum()
+
+    # --- cap hours ---
+    available_hours = len(df)
+    hours = min(hours, available_hours)
+    print(hours)
+
+    # select last N hours
+    last_nh = df.tail(hours)
+
+    start_balance = last_nh["balance"].iloc[0]
+    end_balance = last_nh["balance"].iloc[-1]
+
+    # growth over this period
+    period_return_pct = (end_balance - start_balance) / start_balance
+
+    # scale to daily return (normalize for hours span)
+    daily_return_pct = period_return_pct * (24 / hours)
+
+    # annualize without compounding (APR)
+    apr = period_return_pct * (365 * 24 / hours)
+
+    return apr, daily_return_pct, start_balance, end_balance
+
+
 def main():
     st.set_page_config(page_title="Summer Stimulus", layout="wide")
     st.title("Jaqris' Portfolio Overview")
@@ -309,14 +384,33 @@ def main():
     # max timestamp
     st.text(f"Last updated: {pd.to_datetime(df_funding['timestamp'].max(), unit='ms').floor('s')} UTC")
 
-    df_funding_summary, total_funding, recent_funding = aggregate_funding(df_funding)
-    df_order_summary, total_pnl_without_fees, total_fees, _ = aggregate_pnl(df_orders)
+    df_funding_summary, total_funding, recent_funding, df_hourly_funding = aggregate_funding(df_funding)
+    df_order_summary, total_pnl_without_fees, total_fees, total_pnl_with_fees, df_hourly_pnl = aggregate_pnl(df_orders)
 
-    col1, col2, col3, col4 = st.columns(4)
+    # APY overall (use all hours in data)
+    apy_overall, _, _, _ = calculate_apy(df_hourly_funding, df_hourly_pnl, hours=1200)
+    apy_7d, _, _, _ = calculate_apy(df_hourly_funding, df_hourly_pnl, hours=7 * 24)
+    apy_24h, _, _, _ = calculate_apy(df_hourly_funding, df_hourly_pnl, hours=24)
+    apy_8h, _, _, _ = calculate_apy(df_hourly_funding, df_hourly_pnl, hours=8)
+
+    col1, col2, col3, col4 = st.columns(4)  # outer columns are just padding
+
+    # col1:
+    #     st.metric("APR Overall", f"{apr_overall * 100:.2f}%")
+    # with col2:
+    #     st.metric("APR Last 7 Days", f"{apr_7d * 100:.2f}%")
+    # with col3:
+    #     st.metric("APR Last 24h", f"{apr_24h * 100:.2f}%")
     col1.metric("Total equity", f"${total_equity:.2f}")
     col2.metric("Collected funding", f"${total_funding:.2f}")
-    col3.metric("PnL (excl. fees)", f"${total_pnl_without_fees:.2f}")
+    col3.metric("PnL (entry/exit arb)", f"${total_pnl_without_fees:.2f}")
     col4.metric("Fees paid", f"${total_fees:.2f}")
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("APR (overall)", f"{apy_overall*100:.2f}%")
+    col2.metric("APR (last 7d)", f"{apy_7d*100:.2f}%")
+    col3.metric("APR (last 24h)", f"{apy_24h*100:.2f}%")
+    col4.metric("APR (last 8h)", f"{apy_8h * 100:.2f}%")
 
     # col4.metric("PnL (disregarded from balance)", f"${total_pnl_without_fees:.2f}")
 
