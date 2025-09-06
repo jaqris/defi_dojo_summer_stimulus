@@ -47,6 +47,12 @@ def fetch_market_index_to_symbol_map():
 
 
 async def get_lighter_balance():
+    order_book_url = f"{BASE_URL}/api/v1/orderBookDetails"
+    resp = requests.get(order_book_url)
+    resp.raise_for_status()
+    order_book = resp.json()
+    order_book_details = order_book['order_book_details']
+
     api_client = ApiClient(configuration=lighter.Configuration(host=BASE_URL))
     account_instance = lighter.AccountApi(api_client)
 
@@ -63,20 +69,33 @@ async def get_lighter_balance():
         equity = equity + float(account.total_asset_value if account.total_asset_value else 0.0)
 
         positions = account.positions
+        notional_exposure = 0.0
+        total_mm_req = 0.0
+
         for pos in positions:
             unrlzd = float(pos.unrealized_pnl) if pos.unrealized_pnl else 0.0
             unrealized_pnl += unrlzd
+            notional_exposure = notional_exposure + float(pos.position_value) if pos.position_value else 0.0
 
+            market_details = [m for m in order_book_details if m['market_id'] == pos.market_id][0]
+            maintenance_margin_fraction = market_details['maintenance_margin_fraction'] / 10000
+
+            mm_req = (abs(float(pos.position_value)) * maintenance_margin_fraction) if pos.position else 0.0
+            total_mm_req = total_mm_req + mm_req
+
+    health_ratio = (1 - total_mm_req / equity) * 100
     balance = {
         "exchange": "lighter",
         # "balance": balance,
         "equity": equity,
+        "notional_exposure": notional_exposure,
+        "leverage": str(f"{round(notional_exposure / equity, 2)}x"),
+        "health_ratio": str(f"{round(health_ratio)}%")
         # "unrealized_pnl": unrealized_pnl
     }
 
-    return balance
-
     await api_client.close()
+    return balance
 
 
 async def get_lighter_positions():
@@ -233,6 +252,22 @@ async def get_lighter_order_history():
         await client.close()
 
 
+async def account_stats():
+    api_client = ApiClient(configuration=lighter.Configuration(host=BASE_URL))
+    account_instance = lighter.AccountApi(api_client)
+
+    result = await account_instance.account(by="l1_address", value=WALLET_ADDRESS)
+    account = result.accounts[0]
+    free_collateral = float(account.available_balance)
+    total_collateral = float(account.collateral)
+    margin_requirement = total_collateral - free_collateral
+    print(account)
+    health_ratio = (1 - margin_requirement / total_collateral) * 100
+    print(f"Total collateral: {total_collateral} USDC")
+    print(f"Free collateral: {free_collateral} USDC")
+    print(f"Margin requirement: {margin_requirement} USDC")
+    print(f"Health ratio: {round(health_ratio)}%")
+
 if __name__ == "__main__":
-    trades = asyncio.run(get_lighter_order_history())
-    print(trades)
+    asyncio.run(get_lighter_balance())
+
