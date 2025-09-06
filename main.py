@@ -215,6 +215,7 @@ def get_balances():
     extended_balance = get_extended_balance()
     lighter_balance = asyncio.run(get_lighter_balance())
     drift_balance = asyncio.run(get_drift_balance())
+    print(drift_balance)
     hyperliquid_balance = get_hyperliquid_balance()
 
     # Create DataFrame from list of dicts
@@ -226,13 +227,16 @@ def get_balances():
         'exchange': ['Total'],
         # 'balance': [df['balance'].sum()],
         'equity': [df['equity'].sum()],
+        'notional_exposure': None,
+        'leverage': None,
+        'health_ratio': None
         # 'unrealized_pnl': [df['unrealized_pnl'].sum()]
     })
 
     df_total = pd.concat([df, total], ignore_index=True)
 
 
-    return df_total[['exchange', 'equity']], total_equity
+    return df_total[['exchange', 'equity', 'leverage', 'health_ratio']], total_equity
 
 
 def get_positions():
@@ -403,8 +407,8 @@ def main():
     #     st.metric("APR Last 24h", f"{apr_24h * 100:.2f}%")
     col1.metric("Total equity", f"${total_equity:.2f}")
     col2.metric("Collected funding", f"${total_funding:.2f}")
-    col3.metric("PnL (entry/exit arb)", f"${total_pnl_without_fees:.2f}")
-    col4.metric("Fees paid", f"${total_fees:.2f}")
+    col3.metric("PnL (fees+entry/exit arb)", f"${total_pnl_with_fees:.2f}")
+    # col4.metric("Fees paid", f"${total_fees:.2f}")
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("APR (overall)", f"{apy_overall*100:.2f}%")
