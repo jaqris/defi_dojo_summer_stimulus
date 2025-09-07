@@ -56,7 +56,7 @@ async def get_drift_balance():
         connection,
         wallet=KEYPAIR,
         env="mainnet",
-        perp_market_indexes=[72],
+        perp_market_indexes=[0, 75, 72, 66, 6,42],
         spot_market_indexes=[0],
         authority=PUBLIC_KEY
     )
