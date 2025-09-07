@@ -56,7 +56,7 @@ async def get_drift_balance():
         connection,
         wallet=KEYPAIR,
         env="mainnet",
-        perp_market_indexes=[0, 75, 72, 66, 6, 42],
+        perp_market_indexes=[72],
         spot_market_indexes=[0],
         authority=PUBLIC_KEY
     )
@@ -64,12 +64,15 @@ async def get_drift_balance():
 
     drift_user = drift_client.get_user()
 
+
     total_collateral = drift_user.get_total_collateral(MarginCategory.MAINTENANCE)
     free_collateral = drift_user.get_free_collateral(MarginCategory.MAINTENANCE)
     unrealized_pnl = drift_user.get_unrealized_pnl(with_funding=True)
     # pnl = drift_user.get_unrealized_funding_pnl()
-    equity = (total_collateral + unrealized_pnl) / 10**6
-
+    equity = total_collateral / 10**6 + unrealized_pnl / 10**6
+    print(total_collateral)
+    print(free_collateral)
+    print(unrealized_pnl)
     active_positions = drift_user.get_active_perp_positions()
     notional_exposure = 0
     for p in active_positions:
