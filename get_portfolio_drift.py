@@ -69,10 +69,11 @@ async def get_drift_balance():
     free_collateral = drift_user.get_free_collateral(MarginCategory.MAINTENANCE)
     unrealized_pnl = drift_user.get_unrealized_pnl(with_funding=True)
     # pnl = drift_user.get_unrealized_funding_pnl()
-    equity = total_collateral / 10**6 + unrealized_pnl / 10**6
-    print(total_collateral)
-    print(free_collateral)
-    print(unrealized_pnl)
+    equity = total_collateral / 10**6
+    # print(total_collateral / 10**6)
+    # print(free_collateral / 10**6)
+    # print(unrealized_pnl / 10**6)
+    # print(equity)
     active_positions = drift_user.get_active_perp_positions()
     notional_exposure = 0
     for p in active_positions:
@@ -83,8 +84,8 @@ async def get_drift_balance():
         #     "quote_asset_amount": p.quote_asset_amount / 10**6,
         #     "price": (p.quote_asset_amount / 10**6) / abs(p.base_asset_amount / 10**9) if p.base_asset_amount != 0 else 0
         # })
-    print(total_collateral)
-    print(unrealized_pnl)
+    # print(total_collateral)
+    # print(unrealized_pnl)
 
     margin_requirement = total_collateral - free_collateral
     health_ratio = (1 - margin_requirement / total_collateral) * 100
