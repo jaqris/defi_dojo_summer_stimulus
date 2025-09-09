@@ -56,8 +56,8 @@ async def get_drift_balance():
         connection,
         wallet=KEYPAIR,
         env="mainnet",
-        perp_market_indexes=[0, 75, 72, 66, 6,42],
-        spot_market_indexes=[0],
+        # perp_market_indexes=[0, 75, 72, 66, 6,42],
+        # spot_market_indexes=[0],
         authority=PUBLIC_KEY
     )
     await drift_client.subscribe()
@@ -93,7 +93,7 @@ async def get_drift_balance():
     balance = {
         "exchange": "drift",
         # "balance": total_collateral / 10**6,
-        "equity": equity,
+        "equity": equity, # total_collateral / 10**6,
         # "unrealized_pnl": unrealized_pnl / 10**6
         "notional_exposure": notional_exposure,
         "leverage": str(f"{round(notional_exposure / equity, 2)}x"),
@@ -108,8 +108,8 @@ async def get_leverage():
         connection,
         wallet=KEYPAIR,
         env="mainnet",
-        perp_market_indexes=[0, 75, 72, 66, 6, 42],
-        spot_market_indexes=[0],
+        # perp_market_indexes=[0, 75, 72, 66, 6, 42],
+        # spot_market_indexes=[0],
         authority=PUBLIC_KEY
     )
     await drift_client.subscribe()
@@ -128,8 +128,8 @@ async def get_drift_positions():
         connection,
         wallet=KEYPAIR,
         env="mainnet",
-        perp_market_indexes=[0, 75, 72, 66, 6, 42],
-        spot_market_indexes=[0],
+        # perp_market_indexes=[0, 75, 72, 66, 6, 42],
+        # spot_market_indexes=[0],
         authority=PUBLIC_KEY
     )
     await drift_client.subscribe()
@@ -234,8 +234,8 @@ async def margin():
         connection,
         wallet=KEYPAIR,
         env="mainnet",
-        perp_market_indexes=[0, 75, 72, 66, 6, 42],
-        spot_market_indexes=[0],
+        # perp_market_indexes=[0, 75, 72, 66, 6, 42],
+        # spot_market_indexes=[0],
         authority=PUBLIC_KEY
     )
     await drift_client.subscribe()
