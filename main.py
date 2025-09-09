@@ -211,6 +211,65 @@ def plot_cumulative_funding(df: pd.DataFrame):
     )
 
 
+def daily_contribution_chart(df_funding: pd.DataFrame):
+    """
+    Returns a stacked bar chart of funding contributions per symbol, aggregated weekly.
+    """
+    df = df_funding.copy()
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df['week'] = df['timestamp'].dt.to_period('D').apply(lambda r: r.start_time)
+
+    # aggregate funding per week and symbol
+    weekly = (
+        df.groupby(['week', 'symbol'], as_index=False)
+        .agg({'funding': 'sum'})
+    )
+
+    fig = px.bar(
+        weekly,
+        x='week',
+        y='funding',
+        color='symbol',
+        title='Daily Contribution per Symbol',
+        barmode='stack'
+    )
+    fig.update_layout(xaxis_title="Week", yaxis_title="Funding")
+    return fig
+
+
+def rolling_avg_chart(df_funding: pd.DataFrame, window: int = 7):
+    """
+    Returns a line chart of rolling average funding per symbol.
+    Default window = 7 days.
+    """
+    df = df_funding.copy()
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df = df.set_index('timestamp').sort_index()
+
+    # aggregate daily funding first
+    daily = (
+        df.groupby([pd.Grouper(freq='1D'), 'symbol'])
+        .agg({'funding': 'sum'})
+        .reset_index()
+    )
+
+    # calculate rolling mean
+    daily['rolling_avg'] = (
+        daily.groupby('symbol')['funding']
+        .transform(lambda s: s.rolling(window, min_periods=1).mean())
+    )
+
+    fig = px.line(
+        daily,
+        x='timestamp',
+        y='rolling_avg',
+        color='symbol',
+        title=f'{window}D Rolling Average Funding per Symbol'
+    )
+    fig.update_layout(xaxis_title="Date", yaxis_title="Funding (Rolling Avg)")
+    return fig
+
+
 def get_balances():
     extended_balance = get_extended_balance()
     lighter_balance = asyncio.run(get_lighter_balance())
@@ -378,6 +437,9 @@ def calculate_apy(
 def main():
     st.set_page_config(page_title="Summer Stimulus", layout="wide")
     st.title("Jaqris' Portfolio Overview")
+    st.markdown(f"Currently only trading on Drift and Lighter. \n"
+                f"[Drift Portfolio](https://app.drift.trade/overview?userAccount=ENo6PA4ypDxy9rfDZiusnZw4ZfKpFzbqkd3HEFyRTDhT) \n"
+                f"[Lighter Portfolio](https://lightlens.vercel.app/traders/0x84EAec4953E02A07E9Ab79DB98C4dA1287Ed8FfB)")
 
     # Get data
     df_balances, total_equity = get_balances()
@@ -447,14 +509,15 @@ def main():
         st.plotly_chart(plot_cumulative_funding(df_funding), use_container_width=True)
 
     # 1D funding
-    agg_1d = aggregate_funding_by_4hr(df_funding, "1D")
+    # agg_1d = aggregate_funding_by_4hr(df_funding, "1D")
     with col2:
-        st.plotly_chart(plot_funding(agg_1d, "1D"), use_container_width=True)
+
+        st.plotly_chart(daily_contribution_chart(df_funding), use_container_width=True)
 
     # 8H funding
-    agg_8h = aggregate_funding_by_4hr(df_funding, "8H")
+    # agg_8h = aggregate_funding_by_4hr(df_funding, "8H")
     with col3:
-        st.plotly_chart(plot_funding(agg_8h, "8H"), use_container_width=True)
+        st.plotly_chart(rolling_avg_chart(df_funding), use_container_width=True)
 
     st.header("Order History")
     st.table(df_orders)
