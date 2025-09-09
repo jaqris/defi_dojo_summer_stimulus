@@ -438,7 +438,7 @@ def main():
     st.set_page_config(page_title="Summer Stimulus", layout="wide")
     st.title("Jaqris' Portfolio Overview")
     st.markdown(f"Currently only trading on Drift and Lighter. \n"
-                f"[Drift Portfolio](https://app.drift.trade/overview?userAccount=ENo6PA4ypDxy9rfDZiusnZw4ZfKpFzbqkd3HEFyRTDhT) \n"
+                f"[Drift Portfolio](https://app.drift.trade/overview/history?authority=ENo6PA4ypDxy9rfDZiusnZw4ZfKpFzbqkd3HEFyRTDhT) \n"
                 f"[Lighter Portfolio](https://lightlens.vercel.app/traders/0x84EAec4953E02A07E9Ab79DB98C4dA1287Ed8FfB)")
 
     # Get data

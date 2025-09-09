@@ -198,17 +198,21 @@ def get_drift_order_history():
 
         if t.get("user").lower() == t.get("taker").lower():  # Taker
             type = 'market'
-            if t.get("takerOrderDirection", '').lower() == 'long':
+            direction = t.get("takerOrderDirection", "").lower()
+            if direction == 'long':
                 side = 'buy'
-            else:
+            elif direction == 'short':
                 side = 'sell'
             fee = float(t.get("takerFee", 0.0))
         else:  # Maker
             type = 'limit'
-            if t.get("takerOrderDirection", '').lower() == 'long':
+            direction = t.get("makerOrderDirection", "").lower()
+            if direction == 'long':
+                side = 'buy'
+            elif direction == 'short':
                 side = 'sell'
             else:
-                side = 'buy'
+                side = None
             fee = float(t.get("makerFee", 0.0))
 
         trade = {
