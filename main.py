@@ -491,17 +491,6 @@ def main():
         st.header("Current Positions")
         st.table(df_positions)
 
-    st.header("PNL Summary")
-    st.table(df_order_summary)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.header("Collected Funding")
-        st.table(df_funding_summary)
-    with col2:
-        st.header("Most Recent Fundings")
-        st.table(recent_funding)
-
     col1, col2, col3 = st.columns(3)
 
     # Cumulative funding
@@ -518,6 +507,17 @@ def main():
     # agg_8h = aggregate_funding_by_4hr(df_funding, "8H")
     with col3:
         st.plotly_chart(rolling_avg_chart(df_funding), use_container_width=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.header("Collected Funding")
+        st.table(df_funding_summary)
+    with col2:
+        st.header("Most Recent Fundings")
+        st.table(recent_funding)
+
+    st.header("PNL Summary")
+    st.table(df_order_summary)
 
     st.header("Order History")
     st.table(df_orders)

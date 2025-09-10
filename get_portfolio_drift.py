@@ -248,7 +248,6 @@ async def margin():
     drift_user = drift_client.get_user()
     print(drift_user.get_active_perp_positions())
 
-    return active_positions
     total_collateral = drift_user.get_total_collateral(MarginCategory.MAINTENANCE)
     free_collateral = drift_user.get_free_collateral(MarginCategory.MAINTENANCE)
     margin_requirement = total_collateral - free_collateral
