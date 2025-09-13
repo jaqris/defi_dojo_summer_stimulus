@@ -88,6 +88,7 @@ async def get_lighter_balance():
         "exchange": "lighter",
         # "balance": balance,
         "equity": equity,
+        "maintenance_margin": total_mm_req,
         "notional_exposure": notional_exposure,
         "leverage": str(f"{round(notional_exposure / equity, 2)}x"),
         "health_ratio": str(f"{round(health_ratio)}%")
@@ -109,14 +110,15 @@ async def get_lighter_positions():
     for account in accounts:
         positions = account.positions
         for pos in positions:
+            print(pos)
             pos_dict = {
                 "exchange": "lighter",
                 # "market_id": pos.market_id,
                 "symbol": pos.symbol,
                 "side": "long" if pos.sign == 1 else "short",
                 "base_amount": float(pos.position),
-                # "avg_entry_price": float(pos.avg_entry_price),
-                # "liquidation_price": float(pos.additional_properties['liquidation_price']),
+                "price": float(pos.position_value) / float(pos.position) if pos.position and float(pos.position) > 0 else 0.0,
+                "liquidation_price": float(pos.additional_properties['liquidation_price']),
             }
             position_dicts.append(pos_dict)
 
@@ -203,49 +205,57 @@ async def get_lighter_order_history():
     try:
         auth_token, _ = client.create_auth_token_with_expiry()
         order_instance = lighter.OrderApi(api_client)
-
-        result = await order_instance.trades(
-            sort_by='timestamp',
-            limit=50,
-            authorization=auth_token,
-            auth=auth_token,
-            account_index=ACCOUNT_INDEX,
-        )
-
         trades = []
+        cursor = None
 
-        for r in result.trades:
-            if r.bid_account_id == ACCOUNT_INDEX:
-                side = "buy"  # bid
-                if r.is_maker_ask:
-                    type = "market"  # taker
-                    fee = float(r.taker_fee or 0.0)
+        while True:
+            result = await order_instance.trades(
+                sort_by='timestamp',
+                sort_dir='desc',
+                limit=50,
+                authorization=auth_token,
+                auth=auth_token,
+                cursor=cursor,
+                account_index=ACCOUNT_INDEX,
+            )
+            # print(result)
+
+            for r in result.trades:
+                if r.bid_account_id == ACCOUNT_INDEX:
+                    side = "buy"  # bid
+                    if r.is_maker_ask:
+                        type = "market"  # taker
+                        fee = float(r.taker_fee or 0.0)
+                    else:
+                        type = "limit"  # maker
+                        fee = float(r.maker_fee or 0.0)
+
                 else:
-                    type = "limit"  # maker
-                    fee = float(r.maker_fee or 0.0)
+                    side = "sell"  # ask
+                    if r.is_maker_ask:
+                        type = "limit"  # maker
+                        fee = float(r.maker_fee or 0.0)
+                    else:
+                        type = "market"  # taker
+                        fee = float(r.taker_fee or 0.0)
 
-            else:
-                side = "sell"  # ask
-                if r.is_maker_ask:
-                    type = "limit"  # maker
-                    fee = float(r.maker_fee or 0.0)
-                else:
-                    type = "market"  # taker
-                    fee = float(r.taker_fee or 0.0)
+                trade = {
+                    "exchange": "lighter",
+                    "symbol": market_mappings[r.market_id],
+                    "trade_id": r.trade_id,
+                    "side": side,
+                    "type": type,
+                    "price": float(r.price if r.price else 0.0),
+                    "filled_quantity": float(r.size if r.size else 0.0),
+                    "fee": fee,
+                    "timestamp": r.timestamp,
+                    "user_address": WALLET_ADDRESS.lower()
+                }
+                trades.append(trade)
 
-            trade = {
-                "exchange": "lighter",
-                "symbol": market_mappings[r.market_id],
-                "trade_id": r.trade_id,
-                "side": side,
-                "type": type,
-                "price": float(r.price if r.price else 0.0),
-                "filled_quantity": float(r.size if r.size else 0.0),
-                "fee": fee,
-                "timestamp": r.timestamp,
-                "user_address": WALLET_ADDRESS.lower()
-            }
-            trades.append(trade)
+            cursor = result.next_cursor if result.next_cursor else None
+            if not cursor:
+                break
         return trades
     finally:
         await api_client.close()
@@ -269,5 +279,6 @@ async def account_stats():
     print(f"Health ratio: {round(health_ratio)}%")
 
 if __name__ == "__main__":
-    asyncio.run(get_lighter_balance())
-
+    x = asyncio.run(get_lighter_positions())
+    print(x)
+    print(len(x))

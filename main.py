@@ -280,12 +280,15 @@ def get_balances():
     # Create DataFrame from list of dicts
     df = pd.DataFrame([extended_balance, lighter_balance, drift_balance, hyperliquid_balance])
 
+    df['equity'] = df['equity'].round(2)
+
     total_equity = df['equity'].sum()
     # Add total row
     total = pd.DataFrame({
         'exchange': ['Total'],
         # 'balance': [df['balance'].sum()],
         'equity': [df['equity'].sum()],
+        'maintenance_margin': None,
         'notional_exposure': None,
         'leverage': None,
         'health_ratio': None
@@ -295,11 +298,43 @@ def get_balances():
     df_total = pd.concat([df, total], ignore_index=True)
 
 
-    return df_total[['exchange', 'equity', 'leverage', 'health_ratio']], total_equity
+    return df_total[['exchange', 'equity', 'maintenance_margin',
+                     'notional_exposure', 'leverage', 'health_ratio']], total_equity
+
+
+def get_latest_funding_for_exchange_coin(exchange, coin):
+    query = text(f"""
+            WITH ranked AS (
+                SELECT
+                    exchange,
+                    symbol,
+                    fundingrate,
+                    interval,
+                    datetime,
+                    ROW_NUMBER() OVER (PARTITION BY exchange, symbol ORDER BY datetime DESC) AS rn
+                FROM perp_market_data
+                WHERE 
+                    exchange = '{exchange}' AND
+                    symbol ILIKE '{coin}/%'
+                    AND datetime >= NOW() - INTERVAL '25 hours'
+            )
+            SELECT
+                exchange,
+                split_part(symbol,'/',1) as symbol,
+                MAX(CASE WHEN rn = 1 THEN fundingrate/ interval END) * (24 ) * 365 * 100 AS apy_1hr,
+                AVG(CASE WHEN rn <= 8 THEN fundingrate/ interval END) * (24) * 365 * 100 AS apy_8hr,
+                AVG(CASE WHEN rn <= 24 THEN fundingrate/ interval END) * (24) * 365 * 100 AS apy_24hr
+            FROM ranked
+            GROUP BY exchange, symbol
+        """)
+    with engine.connect() as conn:
+        df = pd.read_sql(query, conn)
+
+    return df
 
 
 def get_positions():
-    if FROM_DATABASE:
+    if False:
         query = text("""
                 WITH subquery AS (
                     SELECT
@@ -434,6 +469,91 @@ def calculate_apy(
     return apr, daily_return_pct, start_balance, end_balance
 
 
+import pandas as pd
+
+
+def add_liquidation_prices(df_positions: pd.DataFrame, df_balances: pd.DataFrame) -> pd.DataFrame:
+    """
+    Adds liquidation price to df_positions using df_balances.
+    Formula: P_liq = P_m + (E - MR) / Q
+
+    df_positions: DataFrame with columns [exchange, symbol, base_amount, price]
+    df_balances: DataFrame with columns [exchange, equity, margin_required, notional_exposure]
+
+    Returns: df_positions with 'liq_price' column added (if not already present).
+    """
+
+    # Merge balances into positions
+    merged = df_positions.merge(
+        df_balances[["exchange", "equity", "maintenance_margin"]],
+        on="exchange",
+        how="left"
+    )
+
+    def calc_liq(row):
+        # Skip if already set
+        if pd.notna(row["liquidation_price"]):
+            return row["liquidation_price"]
+
+        Q = row["base_amount"]
+        Pm = row["price"]
+        E = row["equity"]
+        MR = row["maintenance_margin"]
+
+        # Avoid division by zero (no position)
+        if Q == 0:
+            return None
+
+        return Pm - (E - MR) / Q
+
+    merged["liquidation_price"] = merged.apply(calc_liq, axis=1)
+
+    # Return df_positions with new column
+    return merged[df_positions.columns.tolist()]
+
+
+def enrich_positions(df_positions: pd.DataFrame, df_balances: pd.DataFrame):
+    results = []
+
+    for _, row in df_positions.iterrows():
+        exchange = row["exchange"]
+        coin = row["symbol"]
+
+        exchange_coin_funding = get_latest_funding_for_exchange_coin(exchange, coin)
+        results.append(exchange_coin_funding)
+
+    if results:
+        df_funding = pd.concat(results, ignore_index=True)
+    else:
+        df_funding = pd.DataFrame(columns=["exchange", "symbol", "latest_funding", "avg_last_8", "avg_last_24"])
+
+    # Merge on exchange + coin (base coin match: symbol LIKE coin/%)
+    df_positions = df_positions.merge(
+        df_funding,
+        on=["exchange", "symbol"],
+        how="left"
+    )
+
+    df_positions['apy_1hr'] = df_positions.apply(
+        lambda row: -row['apy_1hr'] if row['side'] == 'long' else row['apy_1hr'],
+        axis=1
+    )
+
+    df_positions['apy_8hr'] = df_positions.apply(
+        lambda row: -row['apy_8hr'] if row['side'] == 'long' else row['apy_8hr'],
+        axis=1
+    )
+
+    df_positions['apy_24hr'] = df_positions.apply(
+        lambda row: -row['apy_24hr'] if row['side'] == 'long' else row['apy_24hr'],
+        axis=1
+    )
+
+    df_positions = add_liquidation_prices(df_positions, df_balances)
+
+    return df_positions.loc[abs(df_positions['base_amount']) > 0]
+
+
 def main():
     st.set_page_config(page_title="Summer Stimulus", layout="wide")
     st.title("Jaqris' Portfolio Overview")
@@ -480,16 +600,25 @@ def main():
 
     # col4.metric("PnL (disregarded from balance)", f"${total_pnl_without_fees:.2f}")
 
+    # get latest funding for position data
+    df_positions = enrich_positions(df_positions, df_balances)
+
     # Display data
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([4, 6])
     with col1:
         st.header("Current Balances")
-        st.table(df_balances)
+        st.table(df_balances[['exchange', 'equity', 'leverage', 'health_ratio']])
         # st.header("Current Positions")
         # st.table(df_positions)
     with col2:
         st.header("Current Positions")
-        st.table(df_positions)
+        st.dataframe(df_positions.style.format({
+            "base_amount": "{:.0f}",
+            "apy_1hr": "{:.2f}%",
+            "apy_8hr": "{:.2f}%",
+            "apy_24hr": "{:.2f}%",
+        }))
+        # st.table(df_positions)
 
     col1, col2, col3 = st.columns(3)
 
@@ -500,7 +629,6 @@ def main():
     # 1D funding
     # agg_1d = aggregate_funding_by_4hr(df_funding, "1D")
     with col2:
-
         st.plotly_chart(daily_contribution_chart(df_funding), use_container_width=True)
 
     # 8H funding

@@ -94,6 +94,7 @@ async def get_drift_balance():
         "exchange": "drift",
         # "balance": total_collateral / 10**6,
         "equity": equity, # total_collateral / 10**6,
+        "maintenance_margin": margin_requirement / 10**6,
         # "unrealized_pnl": unrealized_pnl / 10**6
         "notional_exposure": notional_exposure,
         "leverage": str(f"{round(notional_exposure / equity, 2)}x"),
@@ -137,16 +138,21 @@ async def get_drift_positions():
     drift_user = drift_client.get_user()
 
     account = drift_user.get_user_account()
+    # print(account)
 
     position_dicts = []
+    print(drift_client.get_perp_position(74))
     for pos in account.perp_positions:
-
+        print(pos)
         if pos.base_asset_amount != 0:
+            base_amount = float(pos.base_asset_amount) / 10 ** 9
+            quote_amount = float(pos.quote_asset_amount) / 10 ** 6
             pos_dict = {
                 "exchange": "drift",
                 "symbol": market_mappings[pos.market_index],
                 "side": "long" if pos.base_asset_amount > 0 else "short",
-                "base_amount": float(pos.base_asset_amount / 10 ** 9),
+                "base_amount": base_amount,
+                "price": abs(quote_amount / base_amount) if base_amount != 0 else 0,
             }
 
             position_dicts.append(pos_dict)
@@ -188,46 +194,56 @@ def get_drift_collected_funding():
 
 def get_drift_order_history():
     trades_url = f"{BASE_URL}/user/{DRIFT_ACCOUNT_ID}/trades"
-    # trades_url = "https://data.api.drift.trade/user/27AcXXxJ1Hg9uPQAnxT8ZVCZDcdhZWgLSZBsmaXdukxF/trades?page=eyJwayI6IlVTRVIjMjdBY1hYeEoxSGc5dVBRQW54VDhaVkNaRGNkaFpXZ0xTWkJzbWFYZHVreEYiLCJzayI6IlRSQURFI1RTIzE3NTcxNjIyMjUjU0xPVCMzNjUwMzYwOTcjU0lHIzJ0N0F0d281NzlUd1oyb24xNWNlVDhVYURzQ1czbmh2MnA1UjJQTGFiQURUTHp2a3ZOczlzeTl6M3ltaVZjOFBGeDdIaUxHeGZIZUNrUVFHV0oxRjZIbmYjSU5ERVgjMDAwMDAifQ%3D%3D"
-    resp = requests.get(trades_url)
-    resp.raise_for_status()
-    results = resp.json()
     trades = []
+    next_page = None
 
-    for t in results['records']:
+    while True:
+        params = {}
+        if next_page:
+            params['page'] = next_page
 
-        if t.get("user").lower() == t.get("taker").lower():  # Taker
-            type = 'market'
-            direction = t.get("takerOrderDirection", "").lower()
-            if direction == 'long':
-                side = 'buy'
-            elif direction == 'short':
-                side = 'sell'
-            fee = float(t.get("takerFee", 0.0))
-        else:  # Maker
-            type = 'limit'
-            direction = t.get("makerOrderDirection", "").lower()
-            if direction == 'long':
-                side = 'buy'
-            elif direction == 'short':
-                side = 'sell'
-            else:
-                side = None
-            fee = float(t.get("makerFee", 0.0))
+        resp = requests.get(trades_url, params=params)
+        resp.raise_for_status()
+        results = resp.json()
 
-        trade = {
-            "exchange": "drift",
-            "symbol": t.get("symbol", "").split("-")[0] if "-" in t.get("symbol", "") else t.get("symbol§", ""),
-            "trade_id": t.get("txSig") + "_" + str(t.get("txSigIndex")),
-            "side": side,
-            "type": type,
-            "price":  float(t.get("quoteAssetAmountFilled", 0.0)) / float(t.get("baseAssetAmountFilled", 1.0)),
-            "filled_quantity": float(t.get("baseAssetAmountFilled", 0.0)),
-            "fee": fee,
-            "timestamp": t.get("ts") * 1000,
-            "user_address": t.get("user").lower(),
-        }
-        trades.append(trade)
+        for t in results.get('records', []):
+            if t.get("user").lower() == t.get("taker").lower():  # Taker
+                type_ = 'market'
+                direction = t.get("takerOrderDirection", "").lower()
+                if direction == 'long':
+                    side = 'buy'
+                elif direction == 'short':
+                    side = 'sell'
+                fee = float(t.get("takerFee", 0.0))
+            else:  # Maker
+                type_ = 'limit'
+                direction = t.get("makerOrderDirection", "").lower()
+                if direction == 'long':
+                    side = 'buy'
+                elif direction == 'short':
+                    side = 'sell'
+                else:
+                    side = None
+                fee = float(t.get("makerFee", 0.0))
+
+            trade = {
+                "exchange": "drift",
+                "symbol": t.get("symbol", "").split("-")[0] if "-" in t.get("symbol", "") else t.get("symbol§", ""),
+                "trade_id": t.get("txSig") + "_" + str(t.get("txSigIndex")),
+                "side": side,
+                "type": type_,
+                "price":  float(t.get("quoteAssetAmountFilled", 0.0)) / float(t.get("baseAssetAmountFilled", 1.0)),
+                "filled_quantity": float(t.get("baseAssetAmountFilled", 0.0)),
+                "fee": fee,
+                "timestamp": t.get("ts") * 1000,
+                "user_address": t.get("user").lower(),
+            }
+            trades.append(trade)
+
+        # check if there’s another page
+        next_page = results.get("meta", {}).get("nextPage")
+        if not next_page:
+            break
 
     return trades
 
@@ -259,5 +275,5 @@ async def margin():
     print(f"Health ratio: {round(health_ratio)}%")
 
 if __name__ == '__main__':
-    positions = asyncio.run(get_drift_balance())
+    positions = asyncio.run(get_drift_positions())
     print(positions)
