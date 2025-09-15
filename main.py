@@ -8,6 +8,7 @@ from get_portfolio_extended import get_extended_balance, get_extended_positions,
 from get_portfolio_lighter import get_lighter_balance, get_lighter_positions, get_lighter_order_history, get_lighter_collected_funding
 from get_portfolio_drift import get_drift_balance, get_drift_positions, get_drift_order_history, get_drift_collected_funding
 from get_portfolio_hyperliquid import get_hyperliquid_balance, get_hyperliquid_positions, get_hyperliquid_order_history, get_hyperliquid_collected_funding
+from concurrent.futures import ThreadPoolExecutor
 
 FROM_DATABASE = True
 
@@ -140,45 +141,6 @@ def aggregate_funding(df: pd.DataFrame) -> pd.DataFrame:
     return agg, total_funding, most_recent, hourly_funding
 
 
-def aggregate_funding_by_4hr(df: pd.DataFrame, freq: str = "4H") -> pd.DataFrame:
-    # Convert timestamp (ms) to datetime
-    df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
-
-    # Aggregate per symbol
-    symbol_agg = (
-        df.set_index("datetime")
-            .groupby("symbol")["funding"]
-            .resample(freq)
-            .sum()
-            .reset_index()
-    )
-
-    # Aggregate total (all symbols combined)
-    total_agg = (
-        df.set_index("datetime")
-            .resample(freq)["funding"]
-            .sum()
-            .reset_index()
-    )
-    total_agg["symbol"] = "TOTAL"
-
-    # Combine
-    agg_df = pd.concat([symbol_agg, total_agg], ignore_index=True)
-
-    return agg_df
-
-
-def plot_funding(agg_df: pd.DataFrame, freq: str):
-    return px.line(
-        agg_df,
-        x="datetime",
-        y="funding",
-        color="symbol",
-        title=f"Funding ({freq})",
-        markers=True
-    )
-
-
 def plot_cumulative_funding(df: pd.DataFrame):
     df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms")
 
@@ -268,33 +230,44 @@ def rolling_avg_chart(df_funding: pd.DataFrame, window: int = 7):
     return fig
 
 
+# async def get_all_balances():
+#     extended_task = asyncio.to_thread(get_extended_balance)  # wrap sync function
+#     hyperliquid_task = asyncio.to_thread(get_hyperliquid_balance)
+#     lighter_task = get_lighter_balance()  # already async
+#     drift_task = get_drift_balance()      # already async
+#
+#     results = await asyncio.gather(
+#         extended_task, lighter_task, drift_task, hyperliquid_task
+#     )
+#     return pd.DataFrame(results)
+
+
 def get_balances():
-    extended_balance = get_extended_balance()
-    lighter_balance = asyncio.run(get_lighter_balance())
-    drift_balance = asyncio.run(get_drift_balance())
-    print(drift_balance)
-    hyperliquid_balance = get_hyperliquid_balance()
+    # df = asyncio.run(get_all_balances())
 
-    # Create DataFrame from list of dicts
-    df = pd.DataFrame([extended_balance, lighter_balance, drift_balance, hyperliquid_balance])
-
-    df['equity'] = df['equity'].round(2)
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(get_extended_balance),
+            executor.submit(lambda: asyncio.run(get_lighter_balance())),
+            executor.submit(lambda: asyncio.run(get_drift_balance())),
+            executor.submit(get_hyperliquid_balance),
+        ]
+        results = [f.result() for f in futures]
+    df = pd.DataFrame(results)
 
     total_equity = df['equity'].sum()
     # Add total row
     total = pd.DataFrame({
         'exchange': ['Total'],
-        # 'balance': [df['balance'].sum()],
         'equity': [df['equity'].sum()],
         'maintenance_margin': None,
         'notional_exposure': None,
         'leverage': None,
         'health_ratio': None
-        # 'unrealized_pnl': [df['unrealized_pnl'].sum()]
     })
 
     df_total = pd.concat([df, total], ignore_index=True)
-
+    df_total['equity'] = df_total['equity'].round(2)
 
     return df_total[['exchange', 'equity', 'maintenance_margin',
                      'notional_exposure', 'leverage', 'health_ratio']], total_equity
@@ -330,7 +303,6 @@ def get_latest_funding_for_exchange_coin(exchange, coin):
 
     return df
 
-
 def get_positions():
     if False:
         query = text("""
@@ -362,14 +334,35 @@ def get_positions():
 
         return df
     else:
-        extended_positions = get_extended_positions()
-        lighter_positions = asyncio.run(get_lighter_positions())
-        drift_positions = asyncio.run(get_drift_positions())
-        hyperliquid_positions = get_hyperliquid_positions()
+        with ThreadPoolExecutor() as executor:
+            futures = [
+                executor.submit(get_extended_positions),
+                executor.submit(lambda: asyncio.run(get_lighter_positions())),
+                executor.submit(lambda: asyncio.run(get_drift_positions())),
+                executor.submit(get_hyperliquid_positions),
+            ]
+            results = [f.result() for f in futures]
 
-        df = pd.DataFrame(extended_positions + lighter_positions + drift_positions + hyperliquid_positions)
+        # results is a list of lists of dicts (one per exchange)
+        df = pd.DataFrame(sum(results, []))  # flatten list of lists
 
-        return df.sort_values(by=['symbol', 'side'])
+        return df.sort_values(by=["symbol", "side"])
+        #
+        # import time
+        # start_time = time.time()
+        # extended_positions = get_extended_positions()
+        # time1 = time.time() - start_time
+        # lighter_positions = asyncio.run(get_lighter_positions())
+        # time2   = time.time() - start_time - time1
+        # drift_positions = asyncio.run(get_drift_positions())
+        # time3  = time.time() - start_time - time1 - time2
+        # hyperliquid_positions = get_hyperliquid_positions()
+        # time4 = time.time() - start_time - time1 - time2 - time3
+        # st.text(f"Extended: {time1:.2f}s, Lighter: {time2:.2f}s, Drift: {time3:.2f}s, Hyperliquid: {time4:.2f}s")
+        # df = pd.DataFrame(extended_positions + lighter_positions + drift_positions + hyperliquid_positions)
+        # df = pd.DataFrame(lighter_positions + drift_positions)
+        #
+        # return df.sort_values(by=['symbol', 'side'])
 
 
 def get_orders():
@@ -560,43 +553,41 @@ def main():
                 f"[Lighter Portfolio](https://lightlens.vercel.app/traders/0x84EAec4953E02A07E9Ab79DB98C4dA1287Ed8FfB)")
 
     # Get data
+    import time
+    start_time = time.time()
     df_balances, total_equity = get_balances()
+    time1 = time.time() - start_time
     df_positions = get_positions()
+    time2 = time.time() - start_time - time1
     df_funding = get_collected_funding()
+    time3 = time.time() - start_time - time1 - time2
     df_orders = get_orders()
+    time4 = time.time() - start_time - time1 - time2 - time3
 
     # max timestamp
     st.text(f"Last updated: {pd.to_datetime(df_funding['timestamp'].max(), unit='ms').floor('s')} UTC")
+    # st.text(f"Loading times (s): balances {time1:.2f}, positions {time2:.2f}, funding {time3:.2f}, orders {time4:.2f}")
 
     df_funding_summary, total_funding, recent_funding, df_hourly_funding = aggregate_funding(df_funding)
     df_order_summary, total_pnl_without_fees, total_fees, total_pnl_with_fees, df_hourly_pnl = aggregate_pnl(df_orders)
 
     # APY overall (use all hours in data)
-    apy_overall, _, _, _ = calculate_apy(df_hourly_funding, df_hourly_pnl, hours=1200)
+    apy_overall, _, _, _ = calculate_apy(df_hourly_funding, df_hourly_pnl, hours=2400)
     apy_7d, _, _, _ = calculate_apy(df_hourly_funding, df_hourly_pnl, hours=7 * 24)
     apy_24h, _, _, _ = calculate_apy(df_hourly_funding, df_hourly_pnl, hours=24)
     apy_8h, _, _, _ = calculate_apy(df_hourly_funding, df_hourly_pnl, hours=8)
 
-    col1, col2, col3, col4 = st.columns(4)  # outer columns are just padding
+    col1, col2, col3, col4 = st.columns(4)
 
-    # col1:
-    #     st.metric("APR Overall", f"{apr_overall * 100:.2f}%")
-    # with col2:
-    #     st.metric("APR Last 7 Days", f"{apr_7d * 100:.2f}%")
-    # with col3:
-    #     st.metric("APR Last 24h", f"{apr_24h * 100:.2f}%")
     col1.metric("Total equity", f"${total_equity:.2f}")
     col2.metric("Collected funding", f"${total_funding:.2f}")
     col3.metric("PnL (fees+entry/exit arb)", f"${total_pnl_with_fees:.2f}")
-    # col4.metric("Fees paid", f"${total_fees:.2f}")
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("APR (overall)", f"{apy_overall*100:.2f}%")
     col2.metric("APR (last 7d)", f"{apy_7d*100:.2f}%")
     col3.metric("APR (last 24h)", f"{apy_24h*100:.2f}%")
     col4.metric("APR (last 8h)", f"{apy_8h * 100:.2f}%")
-
-    # col4.metric("PnL (disregarded from balance)", f"${total_pnl_without_fees:.2f}")
 
     # get latest funding for position data
     df_positions = enrich_positions(df_positions, df_balances)
@@ -606,8 +597,6 @@ def main():
     with col1:
         st.header("Current Balances")
         st.table(df_balances[['exchange', 'equity', 'leverage', 'health_ratio']])
-        # st.header("Current Positions")
-        # st.table(df_positions)
     with col2:
         st.header("Current Positions")
         st.dataframe(df_positions.style.format({
@@ -616,21 +605,14 @@ def main():
             "apy_8hr": "{:.2f}%",
             "apy_24hr": "{:.2f}%",
         }))
-        # st.table(df_positions)
 
     col1, col2, col3 = st.columns(3)
 
     # Cumulative funding
     with col1:
         st.plotly_chart(plot_cumulative_funding(df_funding), use_container_width=True)
-
-    # 1D funding
-    # agg_1d = aggregate_funding_by_4hr(df_funding, "1D")
     with col2:
         st.plotly_chart(daily_contribution_chart(df_funding), use_container_width=True)
-
-    # 8H funding
-    # agg_8h = aggregate_funding_by_4hr(df_funding, "8H")
     with col3:
         st.plotly_chart(rolling_avg_chart(df_funding), use_container_width=True)
 
