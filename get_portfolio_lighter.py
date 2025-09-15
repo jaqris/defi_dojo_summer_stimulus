@@ -110,7 +110,6 @@ async def get_lighter_positions():
     for account in accounts:
         positions = account.positions
         for pos in positions:
-            print(pos)
             pos_dict = {
                 "exchange": "lighter",
                 # "market_id": pos.market_id,
@@ -218,7 +217,6 @@ async def get_lighter_order_history():
                 cursor=cursor,
                 account_index=ACCOUNT_INDEX,
             )
-            # print(result)
 
             for r in result.trades:
                 if r.bid_account_id == ACCOUNT_INDEX:
@@ -271,7 +269,6 @@ async def account_stats():
     free_collateral = float(account.available_balance)
     total_collateral = float(account.collateral)
     margin_requirement = total_collateral - free_collateral
-    print(account)
     health_ratio = (1 - margin_requirement / total_collateral) * 100
     print(f"Total collateral: {total_collateral} USDC")
     print(f"Free collateral: {free_collateral} USDC")

@@ -440,7 +440,6 @@ def calculate_apy(
     # --- cap hours ---
     available_hours = len(df)
     hours = min(hours, available_hours)
-    print(hours)
 
     # select last N hours
     last_nh = df.tail(hours)
