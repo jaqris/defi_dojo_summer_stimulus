@@ -138,12 +138,9 @@ async def get_drift_positions():
     drift_user = drift_client.get_user()
 
     account = drift_user.get_user_account()
-    # print(account)
 
     position_dicts = []
-    print(drift_client.get_perp_position(74))
     for pos in account.perp_positions:
-        print(pos)
         if pos.base_asset_amount != 0:
             base_amount = float(pos.base_asset_amount) / 10 ** 9
             quote_amount = float(pos.quote_asset_amount) / 10 ** 6
@@ -262,7 +259,6 @@ async def margin():
 
     from driftpy.math.margin import MarginCategory
     drift_user = drift_client.get_user()
-    print(drift_user.get_active_perp_positions())
 
     total_collateral = drift_user.get_total_collateral(MarginCategory.MAINTENANCE)
     free_collateral = drift_user.get_free_collateral(MarginCategory.MAINTENANCE)
