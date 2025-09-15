@@ -52,8 +52,6 @@ def aggregate_pnl(df: pd.DataFrame) -> pd.DataFrame:
 
         total_fees = g["fee"].sum()
 
-        net_position = total_buy_qty - total_sell_qty
-
         avg_buy_price = total_buy_value / total_buy_qty if total_buy_qty > 0 else None
         avg_sell_price = total_sell_value / total_sell_qty if total_sell_qty > 0 else None
 
@@ -647,8 +645,8 @@ def main():
     st.header("PNL Summary")
     st.table(df_order_summary)
 
-    st.header("Order History")
-    st.table(df_orders)
+    # st.header("Order History")
+    # st.table(df_orders)
 
 
 if __name__ == "__main__":
