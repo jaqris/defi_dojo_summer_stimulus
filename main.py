@@ -247,10 +247,10 @@ def get_balances():
 
     with ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(get_extended_balance),
+            # executor.submit(get_extended_balance),
             executor.submit(lambda: asyncio.run(get_lighter_balance())),
             executor.submit(lambda: asyncio.run(get_drift_balance())),
-            executor.submit(get_hyperliquid_balance),
+            # executor.submit(get_hyperliquid_balance),
         ]
         results = [f.result() for f in futures]
     df = pd.DataFrame(results)
@@ -336,10 +336,10 @@ def get_positions():
     else:
         with ThreadPoolExecutor() as executor:
             futures = [
-                executor.submit(get_extended_positions),
+                # executor.submit(get_extended_positions),
                 executor.submit(lambda: asyncio.run(get_lighter_positions())),
                 executor.submit(lambda: asyncio.run(get_drift_positions())),
-                executor.submit(get_hyperliquid_positions),
+                # executor.submit(get_hyperliquid_positions),
             ]
             results = [f.result() for f in futures]
 
@@ -552,16 +552,10 @@ def main():
                 f"[Lighter Portfolio](https://lightlens.vercel.app/traders/0x84EAec4953E02A07E9Ab79DB98C4dA1287Ed8FfB)")
 
     # Get data
-    import time
-    start_time = time.time()
     df_balances, total_equity = get_balances()
-    time1 = time.time() - start_time
     df_positions = get_positions()
-    time2 = time.time() - start_time - time1
     df_funding = get_collected_funding()
-    time3 = time.time() - start_time - time1 - time2
     df_orders = get_orders()
-    time4 = time.time() - start_time - time1 - time2 - time3
 
     # max timestamp
     st.text(f"Last updated: {pd.to_datetime(df_funding['timestamp'].max(), unit='ms').floor('s')} UTC")
