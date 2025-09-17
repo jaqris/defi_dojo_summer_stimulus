@@ -10,9 +10,7 @@ from typing import Dict
 
 logging.basicConfig(level=logging.INFO)
 
-# TODO: https://github.com/elliottech/lighter-python/blob/main/examples/create_sl_tp.py
-# Defining the host is optional and defaults to https://mainnet.zklighter.elliot.ai
-# See configuration.py for a list of all supported configuration parameters.
+# example trade: https://github.com/elliottech/lighter-python/blob/main/examples/create_sl_tp.py
 BASE_URL = "https://mainnet.zklighter.elliot.ai"
 PRIVATE_KEY = os.getenv("LIGHTER_SECRET_KEY")
 ACCOUNT_INDEX = int(os.getenv("LIGHTER_ACCOUNT_INDEX"))
@@ -47,12 +45,6 @@ def fetch_market_index_to_symbol_map():
 
 
 async def get_lighter_balance():
-    order_book_url = f"{BASE_URL}/api/v1/orderBookDetails"
-    resp = requests.get(order_book_url)
-    resp.raise_for_status()
-    order_book = resp.json()
-    order_book_details = order_book['order_book_details']
-
     api_client = ApiClient(configuration=lighter.Configuration(host=BASE_URL))
     account_instance = lighter.AccountApi(api_client)
 
@@ -123,7 +115,6 @@ async def get_lighter_positions():
 
     return position_dicts
 
-    await api_client.close()
 
 
 async def get_lighter_mark_prices_for_positions(candlestick_instance, positions_dict):

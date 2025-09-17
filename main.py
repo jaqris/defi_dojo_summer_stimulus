@@ -3,12 +3,17 @@ import asyncio
 import streamlit as st
 import plotly.express as px
 import pandas as pd
+import requests
+import numpy as np
 from sqlalchemy import create_engine, text
 from get_portfolio_extended import get_extended_balance, get_extended_positions, get_extended_order_history, get_extended_collected_funding
 from get_portfolio_lighter import get_lighter_balance, get_lighter_positions, get_lighter_order_history, get_lighter_collected_funding
 from get_portfolio_drift import get_drift_balance, get_drift_positions, get_drift_order_history, get_drift_collected_funding
 from get_portfolio_hyperliquid import get_hyperliquid_balance, get_hyperliquid_positions, get_hyperliquid_order_history, get_hyperliquid_collected_funding
 from concurrent.futures import ThreadPoolExecutor
+# from exchange_adapters import ExtendedAdapter, HyperliquidAdapter
+from exchange_adapters.drift import DriftAdapter
+from exchange_adapters.lighter import LighterAdapter
 
 FROM_DATABASE = True
 
@@ -29,6 +34,11 @@ db_uri = (
 
 # Create engine
 engine = create_engine(db_uri, echo=False, future=True)
+
+lighter = LighterAdapter()
+drift = DriftAdapter()
+# extended = ExtendedAdapter()
+# hyperliquid = HyperliquidAdapter()
 
 
 def aggregate_pnl(df: pd.DataFrame) -> pd.DataFrame:
@@ -93,13 +103,18 @@ def aggregate_pnl(df: pd.DataFrame) -> pd.DataFrame:
     df["hour"] = pd.to_datetime(df["timestamp"], unit="ms").dt.floor("h")
 
     hourly_summary = (
-        df.groupby("hour", as_index=False)
-            .apply(lambda g: pd.Series({
-            "PnL_no_fee": (g[g["side"].str.lower() == "sell"]["value"].sum()
-                           - g[g["side"].str.lower() == "buy"]["value"].sum()),
-            "total_fees": g["fee"].sum()
-        }))
-            .reset_index(drop=True)
+        df.assign(
+            PnL_no_fee=np.where(
+                df["side"].str.lower() == "sell",
+                df["value"],
+                -df["value"]
+            )
+        )
+            .groupby("hour", as_index=False)
+            .agg(
+            PnL_no_fee=("PnL_no_fee", "sum"),
+            total_fees=("fee", "sum")
+        )
     )
     hourly_summary["PnL_with_fee"] = hourly_summary["PnL_no_fee"] - hourly_summary["total_fees"]
 
@@ -242,15 +257,16 @@ def rolling_avg_chart(df_funding: pd.DataFrame, window: int = 7):
 #     return pd.DataFrame(results)
 
 
+
 def get_balances():
     # df = asyncio.run(get_all_balances())
 
     with ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(get_extended_balance),
+            # executor.submit(get_extended_balance),
             executor.submit(lambda: asyncio.run(get_lighter_balance())),
             executor.submit(lambda: asyncio.run(get_drift_balance())),
-            executor.submit(get_hyperliquid_balance),
+            # executor.submit(get_hyperliquid_balance),
         ]
         results = [f.result() for f in futures]
     df = pd.DataFrame(results)
@@ -271,6 +287,42 @@ def get_balances():
 
     return df_total[['exchange', 'equity', 'maintenance_margin',
                      'notional_exposure', 'leverage', 'health_ratio']], total_equity
+
+
+def get_prices_from_lighter():
+    url = "https://mainnet.zklighter.elliot.ai/api/v1/orderBookDetails"
+    resp = requests.get(url)
+    resp.raise_for_status()
+    order_book = resp.json()['order_book_details']
+
+    return {m['symbol']: m['last_trade_price'] for m in order_book}
+
+
+def get_prices_from_extended():
+    url = "https://api.extended.exchange/api/v1/info/markets"
+    resp = requests.get(url)
+    resp.raise_for_status()
+    markets = resp.json()['data']
+
+    return {m['assetName']: float(m['marketStats']['markPrice']) for m in markets}
+
+
+def get_prices_for_open_positions(df_positions):
+    lighter_prices = get_prices_from_lighter()
+
+    # Fill from lighter first
+    df_positions["price"] = df_positions["symbol"].map(lighter_prices)
+
+    # 2. Check if we still have missing values
+    missing_mask = df_positions["price"].isna()
+    if missing_mask.any():
+        # Only pull extended if needed
+        extended_prices = get_prices_from_extended()
+        df_positions.loc[missing_mask, "price"] = (
+            df_positions.loc[missing_mask, "symbol"].map(extended_prices)
+        )
+
+    return df_positions
 
 
 def get_latest_funding_for_exchange_coin(exchange, coin):
@@ -303,8 +355,50 @@ def get_latest_funding_for_exchange_coin(exchange, coin):
 
     return df
 
+
+async def get_all_balances():
+    # extended_balance = await extended.get_balances()
+    # hyperliquid_balance = await hyperliquid.get_balances()
+    lighter_balance = await lighter.history.get_balances()
+    drift_balance = await drift.history.get_balances()
+
+    df = pd.DataFrame([
+        #extended_balance,
+        lighter_balance,
+        drift_balance,
+        #hyperliquid_balance
+    ])
+    total_equity = df['equity'].sum()
+    # Add total row
+    total = pd.DataFrame({
+        'exchange': ['Total'],
+        'equity': [df['equity'].sum()],
+        'maintenance_margin': None,
+        'notional_exposure': None,
+        'leverage': None,
+        'health_ratio': None
+    })
+
+    df_total = pd.concat([df, total], ignore_index=True)
+    df_total['equity'] = df_total['equity'].round(2)
+
+    return df_total[['exchange', 'equity', 'maintenance_margin',
+                     'notional_exposure', 'leverage', 'health_ratio']], total_equity
+
+
+async def get_all_positions():
+    extended_positions = await extended.get_positions()
+    hyperliquid_positions = await hyperliquid.get_positions()  # asyncio.to_thread(get_hyperliquid_positions)
+    lighter_positions = await lighter.get_positions()  # async
+    drift_positions = await drift.history.get_positions()      # async
+
+    result = pd.DataFrame(lighter_positions + drift_positions + extended_positions + hyperliquid_positions)
+    result = result.loc[result['base_amount'] != 0]
+    return result
+
+
 def get_positions():
-    if False:
+    if FROM_DATABASE:
         query = text("""
                 WITH subquery AS (
                     SELECT
@@ -336,10 +430,10 @@ def get_positions():
     else:
         with ThreadPoolExecutor() as executor:
             futures = [
-                executor.submit(get_extended_positions),
-                executor.submit(lambda: asyncio.run(get_lighter_positions())),
+                # executor.submit(get_extended_positions),
+                executor.submit(lambda: asyncio.run(lighter.get_positions())),
                 executor.submit(lambda: asyncio.run(get_drift_positions())),
-                executor.submit(get_hyperliquid_positions),
+                # executor.submit(get_hyperliquid_positions),
             ]
             results = [f.result() for f in futures]
 
@@ -347,23 +441,16 @@ def get_positions():
         df = pd.DataFrame(sum(results, []))  # flatten list of lists
 
         return df.sort_values(by=["symbol", "side"])
-        #
-        # import time
-        # start_time = time.time()
-        # extended_positions = get_extended_positions()
-        # time1 = time.time() - start_time
-        # lighter_positions = asyncio.run(get_lighter_positions())
-        # time2   = time.time() - start_time - time1
-        # drift_positions = asyncio.run(get_drift_positions())
-        # time3  = time.time() - start_time - time1 - time2
-        # hyperliquid_positions = get_hyperliquid_positions()
-        # time4 = time.time() - start_time - time1 - time2 - time3
-        # st.text(f"Extended: {time1:.2f}s, Lighter: {time2:.2f}s, Drift: {time3:.2f}s, Hyperliquid: {time4:.2f}s")
-        # df = pd.DataFrame(extended_positions + lighter_positions + drift_positions + hyperliquid_positions)
-        # df = pd.DataFrame(lighter_positions + drift_positions)
-        #
-        # return df.sort_values(by=['symbol', 'side'])
 
+
+async def get_all_orders():
+    extended_orders = await extended.get_order_history()
+    lighter_orders = await lighter.get_order_history()
+    drift_orders = await drift.history.get_order_history()
+    hyperliquid_orders = await hyperliquid.get_order_history()
+    df = pd.DataFrame(extended_orders + lighter_orders + drift_orders + hyperliquid_orders)
+    df = df.sort_values(by=['timestamp']).reset_index(drop=True)
+    return df[['exchange', 'symbol', 'side', 'price', 'filled_quantity', 'fee', 'timestamp']]
 
 def get_orders():
     if FROM_DATABASE:
@@ -385,6 +472,17 @@ def get_orders():
         df = df.sort_values(by=['timestamp']).reset_index(drop=True)
 
         return df[['exchange', 'symbol', 'side', 'price', 'filled_quantity', 'fee', 'timestamp']]
+
+
+async def get_all_collected_funding():
+    extended_funding = await extended.get_collected_funding()
+    hyperliquid_funding = await hyperliquid.get_collected_funding()
+    lighter_funding = await lighter.get_collected_funding()
+    drift_funding = await drift.history.get_collected_funding()
+
+    df = pd.DataFrame(extended_funding + lighter_funding + drift_funding + hyperliquid_funding)
+    # df = pd.DataFrame(lighter_funding)
+    return df.sort_values(by=['timestamp']).reset_index(drop=True)
 
 
 def get_collected_funding():
@@ -459,9 +557,6 @@ def calculate_apy(
     return apr, daily_return_pct, start_balance, end_balance
 
 
-import pandas as pd
-
-
 def add_liquidation_prices(df_positions: pd.DataFrame, df_balances: pd.DataFrame) -> pd.DataFrame:
     """
     Adds liquidation price to df_positions using df_balances.
@@ -481,10 +576,6 @@ def add_liquidation_prices(df_positions: pd.DataFrame, df_balances: pd.DataFrame
     )
 
     def calc_liq(row):
-        # Skip if already set
-        if pd.notna(row["liquidation_price"]):
-            return row["liquidation_price"]
-
         Q = row["base_amount"]
         Pm = row["price"]
         E = row["equity"]
@@ -493,13 +584,21 @@ def add_liquidation_prices(df_positions: pd.DataFrame, df_balances: pd.DataFrame
         # Avoid division by zero (no position)
         if Q == 0:
             return None
+        
+        if row['side'] == 'short':
+            liq_price = Pm + (E - 1.20 * MR) / abs(Q)
+        else:
+            liq_price = Pm - (E - 1.20 * MR) / Q
 
-        return Pm - (E - MR) / Q
+        return liq_price if liq_price > 0 else None
+
+    if "liquidation_price" not in merged.columns:
+        merged["liquidation_price"] = None
 
     merged["liquidation_price"] = merged.apply(calc_liq, axis=1)
-
+    merged["liq_distance_pct"] = ((merged["liquidation_price"] - merged["price"]).abs() / merged["price"]) * 100
     # Return df_positions with new column
-    return merged[df_positions.columns.tolist()]
+    return merged[df_positions.columns.tolist() + ["liquidation_price", "liq_distance_pct"]]
 
 
 def enrich_positions(df_positions: pd.DataFrame, df_balances: pd.DataFrame):
@@ -538,13 +637,13 @@ def enrich_positions(df_positions: pd.DataFrame, df_balances: pd.DataFrame):
         lambda row: -row['apy_24hr'] if row['side'] == 'long' else row['apy_24hr'],
         axis=1
     )
-
+    df_positions = get_prices_for_open_positions(df_positions)
     df_positions = add_liquidation_prices(df_positions, df_balances)
 
     return df_positions.loc[abs(df_positions['base_amount']) > 0]
 
 
-def main():
+async def main():
     st.set_page_config(page_title="Summer Stimulus", layout="wide")
     st.title("Jaqris' Portfolio Overview")
     st.markdown(f"Currently only trading on Drift and Lighter. \n"
@@ -552,20 +651,14 @@ def main():
                 f"[Lighter Portfolio](https://lightlens.vercel.app/traders/0x84EAec4953E02A07E9Ab79DB98C4dA1287Ed8FfB)")
 
     # Get data
-    import time
-    start_time = time.time()
-    df_balances, total_equity = get_balances()
-    time1 = time.time() - start_time
+    result = await get_all_balances()
+    df_balances, total_equity = result
     df_positions = get_positions()
-    time2 = time.time() - start_time - time1
     df_funding = get_collected_funding()
-    time3 = time.time() - start_time - time1 - time2
     df_orders = get_orders()
-    time4 = time.time() - start_time - time1 - time2 - time3
-
+    
     # max timestamp
     st.text(f"Last updated: {pd.to_datetime(df_funding['timestamp'].max(), unit='ms').floor('s')} UTC")
-    # st.text(f"Loading times (s): balances {time1:.2f}, positions {time2:.2f}, funding {time3:.2f}, orders {time4:.2f}")
 
     df_funding_summary, total_funding, recent_funding, df_hourly_funding = aggregate_funding(df_funding)
     df_order_summary, total_pnl_without_fees, total_fees, total_pnl_with_fees, df_hourly_pnl = aggregate_pnl(df_orders)
@@ -603,7 +696,12 @@ def main():
             "apy_1hr": "{:.2f}%",
             "apy_8hr": "{:.2f}%",
             "apy_24hr": "{:.2f}%",
+            "price": "${:.4f}",
+            "liquidation_price": "${:.4f}",
+            "liq_distance_pct": "{:.0f}%",
+
         }))
+        st.markdown("** Liquidation price is an estimate. Verify on exchange directly")
 
     col1, col2, col3 = st.columns(3)
 
@@ -629,6 +727,11 @@ def main():
     # st.header("Order History")
     # st.table(df_orders)
 
+    await lighter.close()
+    await drift.close()
+    # await extended.close()
+    # await hyperliquid.close()
+
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

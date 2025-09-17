@@ -124,3 +124,4 @@ websockets==13.0
 wrapt==1.17.3
 yarl==1.9.4
 zstandard==0.18.0
+git+https://${GITHUB_TOKEN}@github.com/jaqris/exchange_adapters.git@main#egg=exchange_adapters
